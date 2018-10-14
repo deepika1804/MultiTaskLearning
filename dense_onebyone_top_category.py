@@ -69,6 +69,7 @@ class TopSequence(Sequence):
 		self.img_size = img_size
 		self.test_mode = test_mode
 		self.data_size = x.shape[0]
+		
 
 	def __len__(self):
 		return self.data_size // self.batch_size
