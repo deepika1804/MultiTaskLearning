@@ -44,32 +44,36 @@ def densenet(num_classes, input_shape):
             return l
         return inner
 
+    def block(kernel,channels,strides,x,funcType):
+        l = Conv2D(channels, kernel, strides=strides, padding='same',kernel_initializer=he_normal())(x)
+        l = BatchNormalization(axis = 1)(l)
+        l = Activation(funcType)(l)
+        return l
 
     def get_model(img_rows, img_cols,rgb):
         img = Input(shape=(img_rows, img_cols, rgb))
-        A1 = NiNBlock(7, [96, 96, 96], [2,2])(img)
-        A1 = AveragePooling2D(pool_size=(3, 3),strides=(2,2),padding='same')(A1)
-    #     l1 = Dropout(0.7)(l1)
-        A1 = BatchNormalization()(A1)
-        A2 = NiNBlock(5, [256, 256, 256], [2,2])(A1)
-        A2 = AveragePooling2D(pool_size=(3, 3),strides=(2,2),padding='same')(A2)
-    #     l2 = Dropout(0.7)(l2)
-        A2 = BatchNormalization()(A2)
-        A3 = NiNBlock(3, [512, 512, 512], [1,1])(A2)
-        A3 = BatchNormalization()(A3)
-        A4 = NiNBlock(3, [1024, 1024, 512,384], [1,1])(A3)
-        A4 = BatchNormalization()(A4)
-        A5 = NiNBlock(3, [512, 512, 512], [2,2])(A4)
-        A5 = AveragePooling2D(pool_size=(3, 3),strides=(2,2),padding='same')(A5)
-        A5 = Flatten()(A5)
-        A6 = Dense(1024)(A5)
-        A6 = Activation('relu')(A6)
-        A7 = Dense(1024)(A6)
-        #add dense according to attribute layer. (for each attribute 1 or 0)
-#         l8 = Dense(1)(l7)
-        A9 = Activation('relu')(A7) # or sigmoid
+        A1 = block(7,96,[2,2],img,'relu')
+        A2 = MaxPooling2D(pool_size=(3,3),strides=(2,2),padding='same')(A1)
 
-        model = Model(inputs=img, outputs=A9)
+        A3 = block(5,256,[2,2],A2,'relu')
+        A4 = MaxPooling2D(pool_size=(3,3),strides=(2,2),padding='same')(A3)
+
+        A5 = block(3,512,[1,1],A4,'relu')
+
+        A6 = block(3,1024,[1,1],A5,'relu')
+
+        A7 = block(3,512,[2,2],A6,'relu')
+        A8 = MaxPooling2D(pool_size=(3,3),strides=(2,2),padding='same')(A7)
+
+        A8 = Flatten()(A8)
+        A9 = Dense(1024)(A8)
+        A10 = BatchNormalization(axis = 1)(A9)
+        A11 = Activation('relu')(A10)
+        A12 = Dense(1024)(A11)
+        A13 = BatchNormalization(axis = 1)(A12)
+        A14 = Activation('relu')(A13)
+        model = Model(inputs=img, outputs=A14)
+
         return model
     img_rows = input_shape[0];
     img_cols = input_shape[1];
@@ -151,7 +155,7 @@ Y_valid = np.array(Y_valid)
 
 model = densenet(num_classes, input_shape=(112,112,3))
 
-top_outter_category_layer = Dense(5, activation='softmax', name='top_outer_category_pred')(model.layers[-1].output)
+top_outter_category_layer = Dense(5, activation='softmax', name='top_outer_category_pred')(model.output)
 
 model = Model(model.input,top_outter_category_layer,name="final")
 print(model.summary())
