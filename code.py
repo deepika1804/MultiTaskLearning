@@ -11,7 +11,7 @@ from keras.regularizers import l2
 from keras.utils import np_utils, Sequence
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 # from keras.preprocessing.image import apply_transform, transform_matrix_offset_center, flip_axis
-# from keras.applications.imagenet_utils import preprocess_input, _obtain_input_shape
+from keras.applications.imagenet_utils import preprocess_input, _obtain_input_shape
 from keras.initializers import he_normal
 #import matplotlib.pyplot as plt
 #from sklearn.metrics import log_loss
@@ -54,22 +54,22 @@ def densenet(num_classes, input_shape):
 
     def get_model(img_rows, img_cols,rgb,noOfParallelBlocks):
         img = Input(shape=(img_rows, img_cols, rgb))
-        l1 = NiNBlock(7, [96, 96, 96], [2,2])(img)
-        l1 = AveragePooling2D(pool_size=(3, 3), strides=(2, 2), padding='same')(l1)
+        l = NiNBlock(7, [96, 96, 96], [2,2])(img)
+        l = AveragePooling2D(pool_size=(3, 3), strides=(2, 2), padding='same')(l)
     #     l1 = Dropout(0.7)(l1)
 
-        l2 = NiNBlock(5, [256, 256, 256], [2,2])(l1)
-        l2 = AveragePooling2D(pool_size=(3, 3), strides=(2, 2), padding='same')(l2)
+        l = NiNBlock(5, [256, 256, 256], [2,2])(l)
+        l = AveragePooling2D(pool_size=(3, 3), strides=(2, 2), padding='same')(l)
     #     l2 = Dropout(0.7)(l2)
 
-        l3 = NiNBlock(3, [512, 512, 512], [1,1])(l2)
+        l = NiNBlock(3, [512, 512, 512], [1,1])(l)
 
-        l4 = NiNBlock(3, [1024, 1024, 512,384], [1,1])(l3)
-        l5 = NiNBlock(3, [512, 512, 512], [2,2])(l4)
-        l5 = GlobalAveragePooling2D()(l5)
+        l = NiNBlock(3, [1024, 1024, 512,384], [1,1])(l)
+        l = NiNBlock(3, [512, 512, 512], [2,2])(l)
+        l = GlobalAveragePooling2D()(l)
         out = []
-        for i in noOfParallelBlocks:
-            out.append(parallelBlock(l5))
+        for i in range(0,noOfParallelBlocks):
+            out.append(parallelBlock(l))
         
 
         model = Model(inputs=img, outputs=out)
@@ -77,7 +77,7 @@ def densenet(num_classes, input_shape):
     img_rows = input_shape[0];
     img_cols = input_shape[1];
     rgb = input_shape[2];
-    model = get_model(img_rows,img_cols,rgb)
+    model = get_model(img_rows,img_cols,rgb,2)
     return model
 
 
@@ -97,8 +97,10 @@ class TopSequence(Sequence):
         print("len")
         return self.data_size // self.batch_size
 
+    def on_epoch_end(self):
+        pass 
+
     def __getitem__(self,batch_idx):
-        print("called")
         if (batch_idx + 1) * self.batch_size - 1 >= self.data_size:
             batch_idx = np.random.randint(self.data_size - 1)
 
@@ -118,7 +120,6 @@ class TopSequence(Sequence):
             batch_top_outer_category[b, :] = np_utils.to_categorical(int(self.y[batch_idx * self.batch_size + b]), 5)
         
         batch_images = preprocess_input(batch_images)
-        print(batch_images.shape)
         return batch_images, batch_top_outer_category
 
 
@@ -152,18 +153,19 @@ Y_valid = np.array(Y_valid)
 
 model = densenet(num_classes, input_shape=(img_rows,img_cols,3))
 
-top_outter_category_layer = Dense(5, activation='softmax', name='top_outer_category_pred')(model.output)
+top_outter_category_layer = Dense(5, activation='softmax', name='top_outer_category_pred')(model.output[0])
 
 model = Model(model.input,top_outter_category_layer,name="final")
 print(model.summary())
 
 ada = Adam(lr = 0.0001,decay=0.0005)
 model.compile(loss=['categorical_crossentropy'],optimizer=ada,metrics=['accuracy'])
-
+path = 'model_top_category_p1_p25.h5'
+checkpoint = ModelCheckpoint(filepath=path,verbose=1,save_best_only=True)
 #model.fit(x_train, y_train,batch_size=batch_size,epochs=epochs,verbose=1,validation_data=(x_test, y_test))
 
-train_seq = TopSequence(X_train, [Y_train,Y_train], batch_size, img_size=[img_rows,img_cols,3])
-val_seq = TopSequence(X_valid, [Y_valid,Y_valid], batch_size, img_size=[img_rows,img_cols,3])
+train_seq = TopSequence(X_train,Y_train, batch_size, img_size=[img_rows,img_cols,3])
+val_seq = TopSequence(X_valid, Y_valid, batch_size, img_size=[img_rows,img_cols,3])
 
 model.fit_generator(
     train_seq,
