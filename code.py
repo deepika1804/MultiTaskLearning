@@ -162,8 +162,8 @@ model.compile(loss=['categorical_crossentropy'],optimizer=ada,metrics=['accuracy
 
 #model.fit(x_train, y_train,batch_size=batch_size,epochs=epochs,verbose=1,validation_data=(x_test, y_test))
 
-train_seq = TopSequence(X_train, Y_train, batch_size, img_size=[img_rows,img_cols,3])
-#val_seq = TopSequence(X_valid[1:2], Y_valid[1:2], batch_size, img_size=[32,32,3])
+train_seq = TopSequence(X_train, [Y_train,Y_train], batch_size, img_size=[img_rows,img_cols,3])
+val_seq = TopSequence(X_valid, [Y_valid,Y_valid], batch_size, img_size=[img_rows,img_cols,3])
 
 model.fit_generator(
     train_seq,
