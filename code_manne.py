@@ -29,51 +29,42 @@ from keras.layers import Conv2D, MaxPooling2D, Activation
 
 def densenet(num_classes, input_shape):
     
-    def NiNBlock(kernel, mlps, strides):
-        weight_decay=1e-4
-        def inner(x):
-            l = BatchNormalization()(x)
-            l = Conv2D(mlps[0], kernel, strides=strides, padding='same',kernel_initializer=he_normal(),kernel_regularizer=l2(weight_decay),use_bias=False)(l)
-            l = Dropout(0.2)(l)
-            l = Activation('relu')(l)
-            for size in mlps[1:]:
-                l = BatchNormalization()(l)
-                l = Conv2D(size, 1, strides=[1,1],kernel_initializer=he_normal(),kernel_regularizer=l2(weight_decay),use_bias=False)(l)
-                l = Activation('relu')(l)
-            return l
-        return inner
-
-    def parallelBlock(inputNIN):
-        l = Dense(1024)(inputNIN)
-        l = Dropout(0.2)(l)
+    def NiNBlock(input_tensor, kernel, mlps, strides):
+        l = Conv2D(mlps[0], kernel, strides=strides, padding='same')(input_tensor)
+        l = BatchNormalization()(l)
         l = Activation('relu')(l)
-        l = Dense(1024)(l)
-        l = Dropout(0.2)(l)
-        l = Activation('relu')(l) # or sigmoid
+        for size in mlps[1:]:
+            l = Conv2D(size, 1, strides=[1,1])(l)
+            l = BatchNormalization()(l)
+            l = Activation('relu')(l)
         return l
 
-    def get_model(img_rows, img_cols,rgb,noOfParallelBlocks):
+
+    def get_model(img_rows, img_cols,rgb):
         img = Input(shape=(img_rows, img_cols, rgb))
-        l1 = NiNBlock(7, [96, 96, 96], [2,2])(img)
-        l1 = AveragePooling2D(pool_size=(3, 3), strides=(2, 2), padding='same')(l1)
-    #     l1 = Dropout(0.7)(l1)
+        l = NiNBlock(img, 7, [96, 96, 96], [2,2])
+        l = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='same')(l)
 
-        l2 = NiNBlock(5, [256, 256, 256], [2,2])(l1)
-        l2 = AveragePooling2D(pool_size=(3, 3), strides=(2, 2), padding='same')(l2)
-    #     l2 = Dropout(0.7)(l2)
+        l = NiNBlock(l, 5, [256, 256, 256], [2,2])
+        l = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='same')(l)
 
-        l3 = NiNBlock(3, [512, 512, 512], [1,1])(l2)
+        l = NiNBlock(l, 3, [512, 512, 512], [1,1])
 
-        l4 = NiNBlock(3, [1024, 1024, 512,384], [1,1])(l3)
-        l5 = NiNBlock(3, [512, 512, 512], [2,2])(l4)
-        l5 = GlobalAveragePooling2D()(l5)
-        out = []
-        for i in noOfParallelBlocks:
-            out.append(parallelBlock(l5))
-        
+        l = NiNBlock(l, 3, [1024, 1024, 512,384], [1,1])
 
-        model = Model(inputs=img, outputs=out)
+        l = NiNBlock(l, 3, [512, 512, 512], [2,2])
+        l = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='same')(l)
+
+        l = Flatten()(l)
+        l = Dense(1024)(l)
+        l = BatchNormalization()(l)
+
+        l = Dense(1024)(l)
+        l = BatchNormalization()(l)
+
+        model = Model(inputs=img, outputs=l)
         return model
+
     img_rows = input_shape[0];
     img_cols = input_shape[1];
     rgb = input_shape[2];
@@ -83,7 +74,7 @@ def densenet(num_classes, input_shape):
 
 class TopSequence(Sequence):
 # class TopSequence():
-    def __init__(self, x, y, batch_size, img_size, test_mode=False):
+    def __init__(self, x, y, batch_size, img_size = [32,32,3], test_mode=False):
         print("init")
         self.x = x
         self.y = y
@@ -110,7 +101,7 @@ class TopSequence(Sequence):
             img_path = self.x[batch_idx * self.batch_size + b]
             im = cv2.imread(img_path)
             im = cv2.resize(im,(self.img_size[0], self.img_size[1]))
-            im = im / 255.0
+#            im = im / 255.0
 #             im = augment_image(im)
 #             im = im * 255.0
 
@@ -125,8 +116,8 @@ class TopSequence(Sequence):
 img_rows, img_cols = 112, 112
 channel = 3
 num_classes = 18
-batch_size = 256
-nb_epoch = 10
+batch_size = 32
+nb_epoch = 150
 
 X_train = []
 X_valid = []
@@ -150,26 +141,23 @@ X_valid = np.array(X_valid)
 Y_train = np.array(Y_train)
 Y_valid = np.array(Y_valid)
 
-model = densenet(num_classes, input_shape=(img_rows,img_cols,3))
+model = densenet(num_classes, input_shape=(32,32,3))
 
 top_outter_category_layer = Dense(5, activation='softmax', name='top_outer_category_pred')(model.output)
 
 model = Model(model.input,top_outter_category_layer,name="final")
 print(model.summary())
 
-ada = Adam(lr = 0.0001,decay=0.0005)
-model.compile(loss=['categorical_crossentropy'],optimizer=ada,metrics=['accuracy'])
+opt = Adam()
+model.compile(loss=['categorical_crossentropy'],optimizer=opt,metrics=['accuracy'])
 
-#model.fit(x_train, y_train,batch_size=batch_size,epochs=epochs,verbose=1,validation_data=(x_test, y_test))
-
-train_seq = TopSequence(X_train, Y_train, batch_size, img_size=[img_rows,img_cols,3])
-#val_seq = TopSequence(X_valid[1:2], Y_valid[1:2], batch_size, img_size=[32,32,3])
+train_seq = TopSequence(X_train, Y_train, batch_size, img_size=[32,32,3])
+val_seq = TopSequence(X_valid, Y_valid, batch_size, img_size=[32,32,3])
 
 model.fit_generator(
     train_seq,
     steps_per_epoch=len(train_seq),
     epochs=nb_epoch,
-    callbacks=[checkpoint],
     validation_data=val_seq,
     validation_steps=len(val_seq),
     max_queue_size= 10)

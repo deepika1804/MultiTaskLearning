@@ -32,46 +32,35 @@ os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 def densenet(num_classes, input_shape):
     
-    def NiNBlock(kernel, mlps, strides):
-        def inner(x):
-            l = Conv2D(mlps[0], kernel, strides=strides, padding='same',kernel_initializer=he_normal())(x)
-            #l = BatchNormalization()(l)
-        l = Activation('relu')(l)
-           # for size in mlps[1:]:
-            #    l = Conv2D(size, 1, strides=[1,1])(l)
-             #   l = BatchNormalization()(l)
-          #  l = Activation('relu')(l)
-            return l
-        return inner
 
     def block(kernel,channels,strides,x,funcType):
-        l = Conv2D(channels, kernel, strides=strides, padding='same',kernel_initializer=he_normal())(x)
-        l = BatchNormalization(axis = 1)(l)
+        weight_decay=1e-4
+        l = BatchNormalization()(x)
+        l = Conv2D(channels, kernel, strides=strides, padding='same',kernel_initializer=he_normal(),kernel_regularizer=l2(weight_decay),use_bias=False)(l)
         l = Activation(funcType)(l)
         return l
 
     def get_model(img_rows, img_cols,rgb):
         img = Input(shape=(img_rows, img_cols, rgb))
         A1 = block(7,96,[2,2],img,'relu')
-        A2 = MaxPooling2D(pool_size=(3,3),strides=(2,2),padding='same')(A1)
-
+        A2 = AveragePooling2D(pool_size=(3,3),strides=(2,2),padding='same')(A1)
         A3 = block(5,256,[2,2],A2,'relu')
-        A4 = MaxPooling2D(pool_size=(3,3),strides=(2,2),padding='same')(A3)
+        A4 = AveragePooling2D(pool_size=(3,3),strides=(2,2),padding='same')(A3)
 
         A5 = block(3,512,[1,1],A4,'relu')
 
         A6 = block(3,1024,[1,1],A5,'relu')
 
         A7 = block(3,512,[2,2],A6,'relu')
-        A8 = MaxPooling2D(pool_size=(3,3),strides=(2,2),padding='same')(A7)
+        A8 = GlobalAveragePooling2D()(A7)
 
-        A8 = Flatten()(A8)
+        # A8 = Flatten()(A8)
         A9 = Dense(1024)(A8)
-        A10 = BatchNormalization(axis = 1)(A9)
-        A11 = Activation('relu')(A10)
+        # A10 = BatchNormalization(axis = 1)(A9)
+        A11 = Activation('relu')(A9)
         A12 = Dense(1024)(A11)
-        A13 = BatchNormalization(axis = 1)(A12)
-        A14 = Activation('relu')(A13)
+        # A13 = BatchNormalization(axis = 1)(A12)
+        A14 = Activation('relu')(A12)
         model = Model(inputs=img, outputs=A14)
 
         return model
@@ -102,7 +91,6 @@ class TopSequence(Sequence):
         pass
  
     def __getitem__(self,batch_idx):
-        print("called")
         if (batch_idx + 1) * self.batch_size - 1 >= self.data_size:
             batch_idx = np.random.randint(self.data_size - 1)
 
